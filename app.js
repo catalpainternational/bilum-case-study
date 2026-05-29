@@ -47,8 +47,6 @@
     // Skip any element that has a bespoke section-level animation — prevents
     // double-triggering that would otherwise cause a visible re-hide/re-show.
     const customSelectors = [
-      '.compare__col',
-      '.compare__list li',
       '.impact .tile',
       '.challenge__stack > *',
       '.rollout__stage',
@@ -301,68 +299,18 @@
       }
     }
 
-    // ---------- Approach: from/to triptych — row reveal + arrow stroke draw ----------
+    // ---------- Approach: four-up suite — staggered card reveal ----------
     if (hasGSAP && !prefersReduced) {
-      const shifts = document.querySelector('.approach__shifts');
-      if (shifts) {
-        const rows = shifts.querySelectorAll('.approach__shift');
-        const arrows = shifts.querySelectorAll('.approach__shift-arrow path');
-        arrows.forEach((p) => {
-          try {
-            const len = p.getTotalLength();
-            p.style.strokeDasharray = len;
-            p.style.strokeDashoffset = len;
-          } catch (e) { /* ignore */ }
-        });
-        const tl = gsap.timeline({
-          scrollTrigger: { trigger: shifts, start: 'top 75%', once: true },
-        });
-        tl.from(rows, {
+      const suite = document.querySelector('.approach__suite');
+      if (suite) {
+        const cards = suite.querySelectorAll('.approach__card');
+        gsap.from(cards, {
           opacity: 0,
-          y: 18,
-          duration: 0.7,
-          stagger: 0.18,
+          y: 22,
+          duration: 0.85,
+          stagger: 0.16,
           ease: 'power3.out',
-        }, 0)
-          .to(arrows, {
-            strokeDashoffset: 0,
-            duration: 0.7,
-            stagger: 0.18,
-            ease: 'power2.inOut',
-          }, 0.1);
-      }
-    }
-
-    // ---------- Compare: horizontal slide-in + divider draw ----------
-    if (hasGSAP && !prefersReduced) {
-      const compare = document.querySelector('.compare');
-      if (compare) {
-        const before = compare.querySelector('.compare__col--before');
-        const after = compare.querySelector('.compare__col--after');
-        const dividerPaths = compare.querySelectorAll('.compare__divider-svg path');
-        const dividerThen = compare.querySelector('.compare__divider-then');
-        const dividerNow = compare.querySelector('.compare__divider-now');
-
-        // Prep stroke draw
-        dividerPaths.forEach((p) => {
-          try {
-            const len = p.getTotalLength();
-            p.style.strokeDasharray = len;
-            p.style.strokeDashoffset = len;
-          } catch (e) { /* ignore */ }
-        });
-
-        const tl = gsap.timeline({
-          scrollTrigger: { trigger: compare, start: 'top 65%', once: true },
-        });
-        tl.from(before, { xPercent: -6, opacity: 0, duration: 0.9, ease: 'power3.out' }, 0)
-          .from(after,  { xPercent:  6, opacity: 0, duration: 0.9, ease: 'power3.out' }, 0.08)
-          .to(dividerPaths, { strokeDashoffset: 0, duration: 0.9, ease: 'power2.inOut', stagger: 0.1 }, 0.3)
-          .from([dividerThen, dividerNow].filter(Boolean), { opacity: 0, y: 6, duration: 0.5, ease: 'power2.out', stagger: 0.1 }, 0.7);
-
-        gsap.from(compare.querySelectorAll('.compare__list li'), {
-          opacity: 0, y: 16, stagger: 0.08, duration: 0.6, ease: 'power2.out',
-          scrollTrigger: { trigger: compare, start: 'top 55%', once: true },
+          scrollTrigger: { trigger: suite, start: 'top 75%', once: true },
         });
       }
     }
@@ -370,25 +318,28 @@
     // ---------- Shift: paper → spreadsheet → dashboard morph on scroll ----------
     if (hasGSAP && !prefersReduced) {
       const shift = document.querySelector('.shift__visual');
-      if (shift) {
+      const beats = document.querySelector('.shift__beats');
+      if (shift && beats) {
         const paper = shift.querySelector('[data-morph="paper"]');
         const sheet = shift.querySelector('[data-morph="grid"]');
         const chart = shift.querySelector('[data-morph="chart"]');
         const bars = shift.querySelectorAll('.shift__bar');
         const polyline = shift.querySelector('[data-morph="chart"] polyline');
-        const kpiTile = chart && chart.querySelectorAll('g')[0];
 
         gsap.set(sheet, { opacity: 0, scale: 0.96, transformOrigin: 'center' });
         gsap.set(chart, { opacity: 0, scale: 0.96, transformOrigin: 'center' });
         gsap.set(bars, { scaleY: 0, transformOrigin: 'bottom' });
         gsap.set(polyline, { opacity: 0 });
 
+        const chartBeat = beats.querySelector('[data-morph-beat="chart"]');
         const tl = gsap.timeline({
           scrollTrigger: {
-            trigger: shift,
-            start: 'top 75%',
-            end: 'bottom 40%',
+            trigger: beats,
+            start: 'top 60%',
+            endTrigger: chartBeat || beats,
+            end: 'bottom 55%',
             scrub: 0.7,
+            invalidateOnRefresh: true,
           },
         });
         // Paper → Sheet
@@ -399,6 +350,16 @@
           .to(chart, { opacity: 1, scale: 1, duration: 0.7, ease: 'power2.out' }, 1.4)
           .to(bars,  { scaleY: 1, duration: 0.8, ease: 'power2.out', stagger: 0.06 }, 1.7)
           .to(polyline, { opacity: 1, duration: 0.5, ease: 'power2.out' }, 2.2);
+
+        // Active-beat highlighter: toggle data-active as each beat enters the active band
+        gsap.utils.toArray('.shift__beat').forEach((beat) => {
+          ScrollTrigger.create({
+            trigger: beat,
+            start: 'top 60%',
+            end: 'bottom 60%',
+            onToggle: (self) => beat.setAttribute('data-active', self.isActive ? 'true' : 'false'),
+          });
+        });
       }
     }
 
@@ -518,6 +479,60 @@
       codaFacade.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
       });
+    }
+
+    // ---------- Hero video: crossfade the loop seam to avoid a hard cut ----------
+    // Native `loop` snaps the last frame back to the first. Instead we run a twin
+    // copy (same cached source) stacked at the same position and dissolve from the
+    // ending clip into a fresh-from-zero copy. Falls back to a plain still if the
+    // video is hidden (reduced-motion / reduced-data) or JS is unavailable.
+    const heroVideo = document.querySelector('.hero__video');
+    if (heroVideo && !prefersReduced && getComputedStyle(heroVideo).display !== 'none') {
+      const FADE = 0.9; // seconds of overlap at the loop boundary
+      const twin = heroVideo.cloneNode(true);
+      twin.removeAttribute('autoplay');
+      twin.removeAttribute('loop');
+      twin.removeAttribute('id');
+      twin.classList.add('hero__video--twin');
+      twin.muted = true;
+      twin.loop = false;
+      twin.style.opacity = '0';
+      heroVideo.removeAttribute('loop');
+      heroVideo.loop = false;
+      heroVideo.muted = true;
+      heroVideo.style.opacity = '1';
+      heroVideo.parentNode.insertBefore(twin, heroVideo.nextSibling);
+      try { twin.pause(); } catch (e) { /* ignore */ }
+
+      let active = heroVideo;
+      let idle = twin;
+      let swapping = false;
+
+      const onTime = function () {
+        if (swapping) return;
+        const d = active.duration;
+        if (!d || isNaN(d)) return;
+        if (d - active.currentTime > FADE) return;
+        swapping = true;
+        try { idle.currentTime = 0; } catch (e) { /* ignore */ }
+        const p = idle.play();
+        if (p && p.catch) p.catch(function () {});
+        idle.style.opacity = '1';
+        active.style.opacity = '0';
+        const finishing = active;
+        const becoming = idle;
+        window.setTimeout(function () {
+          try { finishing.pause(); finishing.currentTime = 0; } catch (e) { /* ignore */ }
+          active = becoming;
+          idle = finishing;
+          swapping = false;
+        }, FADE * 1000);
+      };
+
+      heroVideo.addEventListener('timeupdate', onTime);
+      twin.addEventListener('timeupdate', onTime);
+      const kick = heroVideo.play();
+      if (kick && kick.catch) kick.catch(function () {});
     }
 
     // ---------- Topbar fallback (when GSAP/Lenis aren't present) ----------
