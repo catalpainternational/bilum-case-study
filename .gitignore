@@ -27,3 +27,5 @@ assets/_*
 *.psd
 *.sketch
 *.fig
+# ilha
+worktrees/
